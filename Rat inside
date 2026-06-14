@@ -1,0 +1,1028 @@
+local splib = loadstring(game:HttpGet("https://raw.githubusercontent.com/as6cd0/SP_Hub/refs/heads/main/splibv2"))()
+
+local Window = splib:MakeWindow({
+    Name = "Blade Ball Premium | SP Library v2",
+    SubTitle = "by splib",
+    Setting = true,
+    Intro = true,
+    IntroText = "SP Hub Premium Loading",
+    IntroIcon = "rbxassetid://83114982417764",
+    IntroSpeed = 1,
+    Toggle = true,
+    IsPremium = true, 
+    Icon = "rbxassetid://83114982417764",
+    RainbowMainFrame = false,
+    RainbowTitle = false,
+    RainbowSubTitle = false,
+    ToggleIcon = "rbxassetid://83114982417764",
+    CloseCallback = true
+})
+
+-- // Global / Feature Variables
+local InfiniteJumpEnabled = false
+local NoclipEnabled = false
+local FlyEnabled = false
+local FlySpeed = 50
+_G.ESP_Enabled = false 
+_G.Skeleton_Enabled = false
+
+-- // Blade Ball Core & Premium Flags
+local AutoParryEnabled = false
+local ParryDistanceValue = 22
+local parryDebounce = false
+
+-- Premium Flags
+local BallMagnetEnabled = false
+local PredictionSystemEnabled = false
+local SpeedBurstEnabled = false
+local dashDebounce = false
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local Debris = game:GetService("Debris")
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local bv, bg
+local TargetNameString = ""
+local CurrentEmoteTrack = nil
+
+-- ==================== ESP BACKEND (DRAWING API) ====================
+local Settings = {
+    BoxColor = Color3.fromRGB(255, 0, 0),
+    SkeletonColor = Color3.fromRGB(255, 255, 0),
+    TextColor = Color3.fromRGB(255, 255, 255),
+    TeamColor = true,
+    ShowDistance = true,
+    ShowName = true,
+    Thickness = 2,
+    FontSize = 14
+}
+
+local ESP_Data = {}
+
+local function RemoveESP(targetPlayer)
+    if ESP_Data[targetPlayer] then
+        if ESP_Data[targetPlayer].Connections then
+            for _, conn in ipairs(ESP_Data[targetPlayer].Connections) do
+                conn:Disconnect()
+            end
+        end
+        if ESP_Data[targetPlayer].Box then ESP_Data[targetPlayer].Box:Remove() end
+        if ESP_Data[targetPlayer].Name then ESP_Data[targetPlayer].Name:Remove() end
+        if ESP_Data[targetPlayer].Distance then ESP_Data[targetPlayer].Distance:Remove() end
+        if ESP_Data[targetPlayer].Bones then
+            for _, line in pairs(ESP_Data[targetPlayer].Bones) do
+                line:Remove()
+            end
+        end
+        ESP_Data[targetPlayer] = nil
+    end
+end
+
+local function CreateESP(targetPlayer)
+    if targetPlayer == player then return end
+    if ESP_Data[targetPlayer] then RemoveESP(targetPlayer) end
+    
+    local Box = Drawing.new("Square")
+    Box.Thickness = Settings.Thickness
+    Box.Filled = false
+    Box.Transparency = 1
+    Box.Color = Settings.BoxColor
+    Box.Visible = false
+    
+    local Name = Drawing.new("Text")
+    Name.Size = Settings.FontSize
+    Name.Center = true
+    Name.Outline = true
+    Name.Color = Settings.TextColor
+    Name.Visible = false
+    
+    local Distance = Drawing.new("Text")
+    Distance.Size = Settings.FontSize - 2
+    Distance.Center = true
+    Distance.Outline = true
+    Distance.Color = Settings.TextColor
+    Distance.Visible = false
+    
+    local Bones = {
+        HeadToTorso = Drawing.new("Line"),
+        TorsoToLeftArm = Drawing.new("Line"),
+        TorsoToRightArm = Drawing.new("Line"),
+        TorsoToLeftLeg = Drawing.new("Line"),
+        TorsoToRightLeg = Drawing.new("Line")
+    }
+    
+    for _, line in pairs(Bones) do
+        line.Thickness = 1.5
+        line.Transparency = 1
+        line.Color = Settings.SkeletonColor
+        line.Visible = false
+    end
+    
+    ESP_Data[targetPlayer] = {
+        Box = Box,
+        Name = Name,
+        Distance = Distance,
+        Bones = Bones,
+        Connections = {}
+    }
+    
+    local renderConnection = RunService.RenderStepped:Connect(function()
+        local Character = targetPlayer.Character
+        if not Character then
+            Box.Visible = false; Name.Visible = false; Distance.Visible = false
+            for _, l in pairs(Bones) do l.Visible = false end
+            return
+        end
+        
+        local RootPart = Character:FindFirstChild("HumanoidRootPart")
+        local Head = Character:FindFirstChild("Head")
+        local Torso = Character:FindFirstChild("Torso") or Character:FindFirstChild("UpperTorso")
+        
+        local LeftArm = Character:FindFirstChild("Left Arm") or Character:FindFirstChild("LeftUpperArm")
+        local RightArm = Character:FindFirstChild("Right Arm") or Character:FindFirstChild("RightUpperArm")
+        local LeftLeg = Character:FindFirstChild("Left Leg") or Character:FindFirstChild("LeftUpperLeg")
+        local RightLeg = Character:FindFirstChild("Right Leg") or Character:FindFirstChild("RightUpperLeg")
+        
+        if not RootPart or not Head then
+            Box.Visible = false; Name.Visible = false; Distance.Visible = false
+            for _, l in pairs(Bones) do l.Visible = false end
+            return
+        end
+        
+        local Vector, OnScreen = camera:WorldToViewportPoint(RootPart.Position)
+        
+        if not OnScreen then
+            Box.Visible = false; Name.Visible = false; Distance.Visible = false
+            for _, l in pairs(Bones) do l.Visible = false end
+            return
+        end
+        
+        if _G.ESP_Enabled then
+            local HeadPos = camera:WorldToViewportPoint(Head.Position + Vector3.new(0, 0.5, 0))
+            local LegPos = camera:WorldToViewportPoint(RootPart.Position - Vector3.new(0, 3, 0))
+            local Height = HeadPos.Y - LegPos.Y
+            local Width = Height * 0.6
+            
+            Box.Size = Vector2.new(Width, Height)
+            Box.Position = Vector2.new(Vector.X - Width/2, Vector.Y - Height/2 + 2)
+            Box.Color = (Settings.TeamColor and targetPlayer.TeamColor) and targetPlayer.TeamColor.Color or Settings.BoxColor
+            Box.Visible = true
+            
+            if Settings.ShowName then
+                Name.Text = targetPlayer.Name
+                Name.Position = Vector2.new(Vector.X, HeadPos.Y - 20)
+                Name.Visible = true
+            else Name.Visible = false end
+            
+            if Settings.ShowDistance and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local DistanceValue = math.floor((player.Character.HumanoidRootPart.Position - RootPart.Position).Magnitude)
+                Distance.Text = DistanceValue .. " studs"
+                Distance.Position = Vector2.new(Vector.X, Vector.Y + Height/2 + 5)
+                Distance.Visible = true
+            else Distance.Visible = false end
+        else
+            Box.Visible = false; Name.Visible = false; Distance.Visible = false
+        end
+        
+        if _G.Skeleton_Enabled and Torso then
+            local pHead = camera:WorldToViewportPoint(Head.Position)
+            local pTorso = camera:WorldToViewportPoint(Torso.Position)
+            
+            local trackingColor = (Settings.TeamColor and targetPlayer.TeamColor) and targetPlayer.TeamColor.Color or Settings.SkeletonColor
+            for _, l in pairs(Bones) do l.Color = trackingColor end
+            
+            Bones.HeadToTorso.From = Vector2.new(pHead.X, pHead.Y)
+            Bones.HeadToTorso.To = Vector2.new(pTorso.X, pTorso.Y)
+            Bones.HeadToTorso.Visible = true
+            
+            if LeftArm then
+                local pLArm = camera:WorldToViewportPoint(LeftArm.Position)
+                Bones.TorsoToLeftArm.From = Vector2.new(pTorso.X, pTorso.Y)
+                Bones.TorsoToLeftArm.To = Vector2.new(pLArm.X, pLArm.Y)
+                Bones.TorsoToLeftArm.Visible = true
+            else Bones.TorsoToLeftArm.Visible = false end
+            
+            if RightArm then
+                local pRArm = camera:WorldToViewportPoint(RightArm.Position)
+                Bones.TorsoToRightArm.From = Vector2.new(pTorso.X, pTorso.Y)
+                Bones.TorsoToRightArm.To = Vector2.new(pRArm.X, pRArm.Y)
+                Bones.TorsoToRightArm.Visible = true
+            else Bones.TorsoToRightArm.Visible = false end
+            
+            if LeftLeg then
+                local pLLeg = camera:WorldToViewportPoint(LeftLeg.Position)
+                Bones.TorsoToLeftLeg.From = Vector2.new(pTorso.X, pTorso.Y)
+                Bones.TorsoToLeftLeg.To = Vector2.new(pLLeg.X, pLLeg.Y)
+                Bones.TorsoToLeftLeg.Visible = true
+            else Bones.TorsoToLeftLeg.Visible = false end
+            
+            if RightLeg then
+                local pRLeg = camera:WorldToViewportPoint(RightLeg.Position)
+                Bones.TorsoToRightLeg.From = Vector2.new(pTorso.X, pTorso.Y)
+                Bones.TorsoToRightLeg.To = Vector2.new(pRLeg.X, pRLeg.Y)
+                Bones.TorsoToRightLeg.Visible = true
+            else Bones.TorsoToRightLeg.Visible = false end
+        else
+            for _, l in pairs(Bones) do l.Visible = false end
+        end
+    end)
+    
+    table.insert(ESP_Data[targetPlayer].Connections, renderConnection)
+end
+
+for _, p in ipairs(Players:GetPlayers()) do CreateESP(p) end
+Players.PlayerAdded:Connect(CreateESP)
+Players.PlayerRemoving:Connect(RemoveESP)
+
+
+-- ==================== BLADE BALL CORE ENGINE ====================
+local function GetActiveBall()
+    for _, v in ipairs(workspace:GetChildren()) do
+        if v.Name == "Ball" and v:IsA("BasePart") then
+            return v
+        end
+    end
+    local ballsFolder = workspace:FindFirstChild("Balls")
+    if ballsFolder then
+        for _, b in ipairs(ballsFolder:GetChildren()) do
+            if b:IsA("BasePart") then return b end
+        end
+    end
+    return nil
+end
+
+local function FireParryRemote()
+    local parryRemote = ReplicatedStorage:FindFirstChild("Parry") or 
+                        ReplicatedStorage:FindFirstChild("ParryAttempt") or 
+                        (ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Parry"))
+                        
+    if parryRemote and parryRemote:IsA("RemoteEvent") then
+        parryRemote:FireServer()
+    else
+        game:GetService("VirtualUser"):Button1Down(Vector2.new(0,0), camera.CFrame)
+    end
+end
+
+RunService.PostSimulation:Connect(function()
+    local char = player.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    
+    local ball = GetActiveBall()
+    if not ball then return end
+    
+    local targetAttribute = ball:GetAttribute("target") or ball:GetAttribute("Target")
+    local isTargetingMe = (targetAttribute == player.Name) or (ball:FindFirstChild("Target") and ball.Target.Value == player)
+    
+    local distance = (root.Position - ball.Position).Magnitude
+    local ballVelocity = ball.AssemblyLinearVelocity.Magnitude
+    
+    local dynamicThreshold = ParryDistanceValue
+    if PredictionSystemEnabled and ballVelocity > 60 then
+        dynamicThreshold = ParryDistanceValue + (ballVelocity * 0.15)
+    elseif ballVelocity > 75 then
+        dynamicThreshold = ParryDistanceValue + (ballVelocity * 0.13)
+    end
+    
+    if AutoParryEnabled and not parryDebounce then
+        if isTargetingMe and distance <= dynamicThreshold then
+            parryDebounce = true
+            FireParryRemote()
+            task.wait(0.1)
+            parryDebounce = false
+        end
+    end
+    
+    if BallMagnetEnabled and isTargetingMe then
+        camera.CFrame = CFrame.lookAt(camera.CFrame.Position, ball.Position)
+    end
+end)
+
+
+-- ==================== FLY CORE ====================
+local function startFly()
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    
+    local root = char.HumanoidRootPart
+    local hum = char:FindFirstChild("Humanoid")
+    
+    bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+    bv.Velocity = Vector3.new(0,0,0)
+    bv.Parent = root
+    
+    bg = Instance.new("BodyGyro")
+    bg.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+    bg.P = 12500
+    bg.Parent = root
+    
+    if hum then hum.PlatformStand = true end
+end
+
+local function stopFly()
+    if bv then bv:Destroy() end
+    if bg then bg:Destroy() end
+    
+    local char = player.Character
+    if char and char:FindFirstChild("Humanoid") then
+        char.Humanoid.PlatformStand = false
+    end
+end
+
+RunService.Heartbeat:Connect(function()
+    if not FlyEnabled then return end
+    
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    
+    local root = char.HumanoidRootPart
+    local move = Vector3.new(0,0,0)
+    
+    if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += camera.CFrame.LookVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= camera.CFrame.LookVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= camera.CFrame.RightVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += camera.CFrame.RightVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.new(0,1,0) end
+    if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.new(0,1,0) end
+    
+    if move.Magnitude > 0 then
+        move = move.Unit
+        bv.Velocity = move * FlySpeed
+        bg.CFrame = CFrame.lookAt(root.Position, root.Position + move)
+    else
+        bv.Velocity = Vector3.new(0,0,0)
+    end
+end)
+
+UserInputService.JumpRequest:Connect(function()
+    if InfiniteJumpEnabled and player.Character then
+        local hum = player.Character:FindFirstChildOfClass("Humanoid")
+        if hum then hum:ChangeState("Jumping") end
+    end
+end)
+
+
+-- ==================== NEON BURST DASH LOGIC ====================
+local function CreateAirDashEffect(rootPart)
+    if not rootPart then return end
+    
+    -- Sound replication
+    local dashSound = Instance.new("Sound")
+    dashSound.SoundId = "rbxassetid://9114223164"
+    dashSound.Volume = 1.5
+    dashSound.Parent = rootPart
+    dashSound:Play()
+    Debris:AddItem(dashSound, 1.5)
+    
+    -- Vibrant Neon Shockwave Configuration
+    local fxPart = Instance.new("Part")
+    fxPart.Size = Vector3.new(4, 1, 4)
+    fxPart.CFrame = rootPart.CFrame * CFrame.Angles(math.rad(90), 0, 0)
+    fxPart.Anchored = true
+    fxPart.CanCollide = false
+    fxPart.Material = Enum.Material.Neon
+    fxPart.Color = Color3.fromRGB(0, 255, 255)
+    fxPart.Transparency = 0.1
+    fxPart.Parent = workspace
+    
+    local mesh = Instance.new("SpecialMesh")
+    mesh.MeshType = Enum.MeshType.FileMesh
+    mesh.MeshId = "rbxassetid://3270017"
+    mesh.Scale = Vector3.new(1, 0.3, 1)
+    mesh.Parent = fxPart
+    
+    -- Hyper Glowing Neon Particle Trail
+    local attachment = Instance.new("Attachment")
+    attachment.Position = Vector3.new(0, -0.5, 0)
+    attachment.Parent = rootPart
+    
+    local particles = Instance.new("ParticleEmitter")
+    particles.Texture = "rbxassetid://5045435015"
+    particles.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 255, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 100, 255))
+    })
+    particles.LightEmission = 1.0
+    particles.LightInfluence = 0.0
+    particles.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.0),
+        NumberSequenceKeypoint.new(0.7, 0.2),
+        NumberSequenceKeypoint.new(1, 1)
+    })
+    particles.Size = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 4.0),
+        NumberSequenceKeypoint.new(1, 0.8)
+    })
+    particles.Lifetime = NumberRange.new(0.25, 0.45)
+    particles.Rate = 220
+    particles.Speed = NumberRange.new(8, 20)
+    particles.SpreadAngle = Vector2.new(20, 20)
+    particles.Parent = attachment
+    
+    -- Animation interpolations
+    TweenService:Create(mesh, TweenInfo.new(0.35, Enum.EasingStyle.QuadOut), {
+        Scale = Vector3.new(14, 4, 14)
+    }):Play()
+    
+    TweenService:Create(fxPart, TweenInfo.new(0.35, Enum.EasingStyle.QuadOut), {
+        Transparency = 1
+    }):Play()
+    
+    Debris:AddItem(fxPart, 0.4)
+    
+    task.delay(0.35, function()
+        particles.Enabled = false
+        task.wait(0.5)
+        attachment:Destroy()
+    end)
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if SpeedBurstEnabled and input.KeyCode == Enum.KeyCode.Q and not dashDebounce then
+        local char = player.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        
+        if root and hum then 
+            dashDebounce = true
+            CreateAirDashEffect(root)
+            
+            -- Reliable velocity application via LinearVelocity constraints
+            local dashAttachment = Instance.new("Attachment")
+            dashAttachment.Name = "DashAttachment"
+            dashAttachment.Parent = root
+            
+            local linearVelocity = Instance.new("LinearVelocity")
+            linearVelocity.Name = "DashVelocity"
+            linearVelocity.Attachment0 = dashAttachment
+            linearVelocity.MaxForce = 9e6
+            
+            -- Calculate look direction or default forward direction
+            local moveDirection = hum.MoveDirection
+            if moveDirection.Magnitude == 0 then
+                moveDirection = root.CFrame.LookVector
+            end
+            
+            linearVelocity.VectorVelocity = moveDirection.Unit * 150
+            linearVelocity.Parent = root
+            
+            -- Active duration of the momentum burst
+            task.wait(0.18) 
+            linearVelocity:Destroy()
+            dashAttachment:Destroy()
+            
+            -- Dash cooldown reset
+            task.wait(0.4)
+            dashDebounce = false
+        end
+    end
+end)
+
+
+-- ==================== TELEPORT & FLING ENGINES ====================
+local function GetPlayerByString(str)
+    str = string.lower(str)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if string.sub(string.lower(p.Name), 1, #str) == str or string.sub(string.lower(p.DisplayName), 1, #str) == str then
+            return p
+        end
+    end
+    return nil
+end
+
+local function TeleportToClosestPlayer()
+    local myChar = player.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return end
+    
+    local closestOpponent = nil
+    local shortestDistance = math.huge
+    
+    for _, opp in ipairs(Players:GetPlayers()) do
+        if opp ~= player and opp.Character and opp.Character:FindFirstChild("HumanoidRootPart") then
+            local oppHum = opp.Character:FindFirstChildOfClass("Humanoid")
+            -- Only track living opponents
+            if oppHum and oppHum.Health > 0 then
+                local dist = (myRoot.Position - opp.Character.HumanoidRootPart.Position).Magnitude
+                if dist < shortestDistance then
+                    shortestDistance = dist
+                    closestOpponent = opp
+                end
+            end
+        end
+    end
+    
+    if closestOpponent then
+        local oppRoot = closestOpponent.Character.HumanoidRootPart
+        -- Safely reposition behind the player to maintain field-of-view tracking
+        myRoot.CFrame = oppRoot.CFrame * CFrame.new(0, 0, 3)
+    else
+        splib:MakeNotification({
+            Name = "Teleport Error",
+            Content = "No valid live players found nearby!",
+            Image = "rbxassetid://6026568198",
+            Time = 3
+        })
+    end
+end
+
+local function FlingTargetPlayer(target)
+    if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then return end
+    local myChar = player.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+    
+    if not myRoot or not myHum then return end
+    
+    local oldCFrame = myRoot.CFrame
+    local targetRoot = target.Character.HumanoidRootPart
+    
+    local oldCameraType = camera.CameraType
+    local oldCameraSubject = camera.CameraSubject
+    camera.CameraType = Enum.CameraType.Scriptable
+    
+    local bAV = Instance.new("BodyAngularVelocity")
+    bAV.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bAV.AngularVelocity = Vector3.new(0, 999999, 0)
+    bAV.Parent = myRoot
+    
+    local noclipConnection = RunService.Stepped:Connect(function()
+        if myChar then
+            for _, part in pairs(myChar:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = false end
+            end
+        end
+    end)
+    
+    myHum:ChangeState(Enum.HumanoidStateType.Physics)
+    
+    local flingActive = true
+    task.spawn(function()
+        while flingActive and targetRoot and targetRoot.Parent and myRoot and myRoot.Parent do
+            RunService.Heartbeat:Wait()
+            
+            myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 0) + targetRoot.Velocity * 0.1
+            myRoot.Velocity = Vector3.new(99999, 99999, 99999)
+            task.wait()
+            if not flingActive then break end
+            myRoot.Velocity = Vector3.new(-99999, -99999, -99999)
+        end
+    end)
+    
+    task.wait(2.5)
+    
+    flingActive = false
+    noclipConnection:Disconnect()
+    if bAV then bAV:Destroy() end
+    
+    myHum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    
+    if myRoot then
+        myRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        myRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        myRoot.Velocity = Vector3.new(0, 0, 0)
+        myRoot.RotVelocity = Vector3.new(0, 0, 0)
+        
+        myRoot.Anchored = true
+        task.wait(0.05)
+        
+        myRoot.CFrame = oldCFrame
+        myRoot.Anchored = false
+    end
+    
+    camera.CameraType = oldCameraType
+    camera.CameraSubject = oldCameraSubject
+end
+
+
+-- ==================== EMOTE CORE SYSTEM ====================
+local function PlayCustomEmote(animationId)
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    
+    if CurrentEmoteTrack then
+        CurrentEmoteTrack:Stop()
+        CurrentEmoteTrack = nil
+    end
+    
+    local anim = Instance.new("Animation")
+    anim.AnimationId = "rbxassetid://" .. tostring(animationId)
+    
+    local animator = hum:FindFirstChildOfClass("Animator")
+    if not animator then
+        animator = Instance.new("Animator")
+        animator.Parent = hum
+    end
+    
+    local success, track = pcall(function()
+        return animator:LoadAnimation(anim)
+    end)
+    
+    if success and track then
+        CurrentEmoteTrack = track
+        CurrentEmoteTrack.Looped = true
+        CurrentEmoteTrack:Play()
+    end
+end
+
+local function StopCustomEmote()
+    if CurrentEmoteTrack then
+        CurrentEmoteTrack:Stop()
+        CurrentEmoteTrack:Destroy()
+        CurrentEmoteTrack = nil
+    end
+end
+
+
+-- ==================== TABS & INTERFACE ====================
+
+local Tab1 = Window:MakeTab({
+    IsMobile = false,
+    IsPC = false,
+    Name = "main",
+    Icon = "rbxassetid://4483345998"
+})
+
+Tab1:AddSection("main")
+
+Tab1:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false, 
+    HidePremium = false,
+    Name = "infinite jump",
+    Desc = "Allows you to jump endlessly in mid-air",
+    Default = false,
+    Flag = "InfJumpFlag",
+    Callback = function(Value) InfiniteJumpEnabled = Value end    
+})
+
+Tab1:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false, 
+    HidePremium = false,
+    Name = "auto parry",
+    Desc = "Monitors targeted incoming projectile velocities and triggers deflects",
+    Default = false,
+    Flag = "AutoParryFlag",
+    Callback = function(Value) AutoParryEnabled = Value end    
+})
+
+Tab1:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false, 
+    HidePremium = false,
+    Name = "noclip",
+    Desc = "Walk through walls",
+    Default = false,
+    Flag = "NoclipFlag",
+    Callback = function(Value) NoclipEnabled = Value end    
+})
+
+RunService.Stepped:Connect(function()
+    if NoclipEnabled and player.Character then
+        for _, part in pairs(player.Character:GetDescendants()) do
+            if part:IsA("BasePart") then part.CanCollide = false end
+        end
+    end
+end)
+
+Tab1:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "teleport",
+    Desc = "What is this toggle do?",
+    Default = false,
+    Flag = "TeleportFlag",
+    Callback = function(Value) print(Value) end    
+})
+
+Tab1:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false, 
+    HidePremium = false,
+    Name = "auto win",
+    Desc = "What is this toggle do?",
+    Default = false,
+    Flag = "AutoWinFlag",
+    Callback = function(Value) print(Value) end    
+})
+
+Tab1:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "avatar dance",
+    Desc = "Plays a client-sided animation loop on your avatar",
+    Default = false,
+    Flag = "DanceEmoteFlag",
+    Callback = function(Value)
+        if Value then PlayCustomEmote(429681631) else StopCustomEmote() end
+    end    
+})
+
+local Tab2 = Window:MakeTab({
+    IsMobile = false,
+    IsPC = false,
+    Name = "player",
+    Icon = "rbxassetid://4483345998"
+})
+
+Tab2:AddSection("player")
+
+Tab2:AddSlider({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false, 
+    HidePremium = false,
+    Name = "walk speed",
+    Min = 0,
+    Max = 600,
+    Increment = 1,
+    Default = 16,
+    ValueName = "Speed Units",
+    Flag = "WalkspeedFlag",
+    Callback = function(Value)
+        local char = player.Character
+        if char and char:FindFirstChildOfClass("Humanoid") then
+            char:FindFirstChildOfClass("Humanoid").WalkSpeed = Value
+        end
+    end    
+})
+
+Tab2:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "fly",
+    Desc = "Fly around using WASD + Space + Ctrl",
+    Default = false,
+    Flag = "FlyFlag",
+    Callback = function(Value)
+        FlyEnabled = Value
+        if FlyEnabled then startFly() else stopFly() end
+    end
+})
+
+Tab2:AddTextBox({
+    Name = "target username",
+    Default = "",
+    TextDisappear = false,
+    Callback = function(Text) TargetNameString = Text end
+})
+
+Tab2:AddButton({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false, 
+    HidePremium = false,
+    Name = "fling player",
+    Desc = "Flings the targeted user typed above",
+    Callback = function() 
+        local foundPlayer = GetPlayerByString(TargetNameString)
+        if foundPlayer then
+            FlingTargetPlayer(foundPlayer)
+        else
+            splib:MakeNotification({
+                Name = "Fling Error",
+                Content = "No player found with that matching name pattern!",
+                Image = "rbxassetid://6026568198",
+                Time = 3
+            })
+        end
+    end    
+})
+
+Tab2:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "auto power hit",
+    Desc = "patched",
+    Default = false,
+    Flag = "AutoPowerHitFlag",
+    Callback = function(Value) print(Value) end    
+})
+
+Tab2:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "god mode",
+    Desc = "beta testing free for now",
+    Default = false,
+    Flag = "GodmodeFlag",
+    Callback = function(Value) print(Value) end    
+})
+
+Tab2:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "teleport to spawn",
+    Desc = "teleports you to the lobby",
+    Default = false,
+    Flag = "TpSpawnFlag",
+    Callback = function(Value) print(Value) end    
+})
+
+Tab2:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "infinite power",
+    Desc = "makes your ultimate never runs out coming soon",
+    Default = false,
+    Flag = "InfPowerFlag",
+    Callback = function(Value) print(Value) end    
+})
+
+Tab2:AddButton({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "teleport to closest player",
+    Desc = "Instantly snap matrix coordinates directly behind the closest active opponent",
+    Callback = function() TeleportToClosestPlayer() end    
+})
+
+Tab2:AddButton({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false, 
+    HidePremium = false,
+    Name = "parry all",
+    Desc = "parry all attacks automatically coming soon",
+    Callback = function() print("button pressed") end    
+})
+
+Tab2:AddButton({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false, 
+    HidePremium = false,
+    Name = "parry aura",
+    Desc = "parry stuff around coming soon patched",
+    Callback = function() print("button pressed") end    
+})
+
+local Tab3 = Window:MakeTab({
+    IsMobile = false,
+    IsPC = false,
+    Name = "premium",
+    Icon = "rbxassetid://4483345998"
+})
+Tab3:AddSection("VIP Combat Subsystems")
+
+Tab3:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "Ball Tracking Magnet",
+    Desc = "Forces local camera look matrix to lock directly onto targeting ball vectors",
+    Default = false,
+    Flag = "PremiumMagnetFlag",
+    Callback = function(Value) BallMagnetEnabled = Value end
+})
+
+Tab3:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "Dynamic Velocity Predictor",
+    Desc = "Dynamically extends parry threshold limits relative to ongoing ball acceleration",
+    Default = false,
+    Flag = "PremiumPredictorFlag",
+    Callback = function(Value) PredictionSystemEnabled = Value end
+})
+
+Tab3:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "Q Dash Burst",
+    Desc = "Applies linear velocity burst multipliers and replicates a glowing neon shockwave effect behind you",
+    Default = false,
+    Flag = "PremiumDashFlag",
+    Callback = function(Value) SpeedBurstEnabled = Value end
+})
+
+local Tab4 = Window:MakeTab({
+    IsMobile = false,
+    IsPC = false,
+    Name = "settings",
+    Icon = "rbxassetid://4483345998"
+})
+Tab4:AddSection("settings")
+
+Tab4:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "smooth tracing",
+    Desc = "What is this toggle do?",
+    Default = false,
+    Flag = "SmoothTracingFlag",
+    Callback = function(Value) print(Value) end    
+})
+
+Tab4:AddButton({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "smooth visuals",
+    Desc = "not working",
+    Callback = function() print("button pressed") end    
+})
+
+Tab4:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "tracing adjustment",
+    Desc = "What is this toggle do?",
+    Default = false,
+    Flag = "TracingAdjustFlag",
+    Callback = function(Value) print(Value) end    
+})
+
+Tab4:AddSlider({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "smooth esp",
+    Min = 0,
+    Max = 400,
+    Increment = 1,
+    Default = 10,
+    ValueName = "smoother esp",
+    Flag = "SmoothEspFlag",
+    Callback = function(Value) print(Value) end    
+})
+
+local Tab5 = Window:MakeTab({
+    IsMobile = false,
+    IsPC = false,
+    Name = "visuals",
+    Icon = "rbxassetid://4483345998"
+})
+
+Tab5:AddSection("visuals")
+
+Tab5:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "box esp",
+    Desc = "Renders boxes, names, and distance vectors over players",
+    Default = false,
+    Flag = "EspToggleFlag",
+    Callback = function(Value) _G.ESP_Enabled = Value end
+})
+
+Tab5:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "skeleton esp",
+    Desc = "Tracks and maps real-time player skeletal bone joints via overlay drawing",
+    Default = false,
+    Flag = "SkeletonToggleFlag",
+    Callback = function(Value) _G.Skeleton_Enabled = Value end
+})
+
+splib:MakeNotification({
+    Name = "Premium Hub",
+    Content = "Premium Blade Ball Subsystems Active!",
+    Image = "rbxassetid://6026568198",
+    Time = 5
+})
