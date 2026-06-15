@@ -1,0 +1,234 @@
+local splib = loadstring(game:HttpGet("https://raw.githubusercontent.com/as6cd0/SP_Hub/refs/heads/main/splibv2"))()
+
+local Window = splib:MakeWindow({
+    Name = "SP HUB | Build A Boat For Treasure",
+    SubTitle = "by 5y5wt",
+    Setting = true,
+    Intro = true,
+    IntroText = "SP Hub Loading",
+    IntroIcon = "rbxassetid://83114982417764",
+    IntroSpeed = 1,
+    Toggle = true,
+    IsPremium = false,
+    Icon = "rbxassetid://83114982417764",
+    RainbowMainFrame = false,
+    RainbowTitle = false,
+    RainbowSubTitle = false,
+    ToggleIcon = "rbxassetid://83114982417764",
+    CloseCallback = true
+})
+
+local Tab = Window:MakeTab({
+    IsMobile = false,
+    IsPC = false,
+    Name = "Auto Farm",
+    Icon = "rbxassetid://4483345998"
+})
+
+local autoFarmEnabled = false
+
+Tab:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "Auto Collect Gold",
+    Desc = "Automatically Collects Gold",
+    Default = false,
+    Flag = "ToggleSave",
+    Callback = function(Value)
+        autoFarmEnabled = Value
+        
+        if autoFarmEnabled then
+            task.spawn(function()
+                local remote = game.Workspace:WaitForChild("ClaimRiverResultsGold")
+                while autoFarmEnabled do
+                    remote:FireServer()
+                    task.wait(1)
+                end
+            end)
+        end
+    end    
+})
+
+Tab:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "Auto Farms Gold",
+    Desc = "Automatically Farm Gold (Enable this with the auto collect)",
+    Default = false,
+    Flag = "ToggleSave",
+    Callback = function(Value)
+        if Value then
+            local Players = game:GetService("Players")
+            local Workspace = game:GetService("Workspace")
+            local localPlayer = Players.LocalPlayer
+
+            local normalStages = Workspace:WaitForChild("NormalStages")
+
+            for i = 1, 10 do
+                local stageName = "CaveStage" .. i
+                local stage = normalStages:FindFirstChild(stageName)
+                
+                if stage then
+                    local character = localPlayer.Character
+                    if character and character:FindFirstChild("HumanoidRootPart") then
+                        character:PivotTo(stage:GetPivot())
+                    end
+                    task.wait(0.5)
+                end
+            end
+        end
+    end
+})
+
+local Tab = Window:MakeTab({
+    IsMobile = false,
+    IsPC = false,
+    Name = "Misc",
+    Icon = "rbxassetid://4483345998"
+})
+
+Tab:AddTextbox({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "Save Slots Exploit (Patched)",
+    Desc = "Put a number on how many save slots you want",
+    Default = "",
+    TextDisappear = true,
+    Flag = "textboxsave",
+    Callback = function(Value)
+        local slotvalue = tonumber(Value)
+
+        if slotvalue then
+            for i = 1, slotvalue do
+                task.spawn(function()
+                    local args = {
+                        [1] = 1,
+                        [2] = tostring(i) .. "\0",
+                        [3] = 0,
+                        [4] = ""
+                    }
+
+                    workspace:WaitForChild("UpdateSlotOrderRE"):FireServer(unpack(args))
+                end)
+            end
+        end
+    end    
+})
+
+Tab:AddSlider({
+   IsMobile = false,
+   IsPC = false,
+   PremiumOnly = false,
+   HidePremium = false,
+   Name = "WalkSpeed",
+   Min = 0,
+   Max = 100,
+   Increment = 1,
+   Default = 16,
+   ValueName = "Speed",
+   Flag = "SliderSave",
+   Callback = function(Value)
+      local Player = game:GetService("Players").LocalPlayer
+      local Character = Player.Character
+      
+      if Character then
+          local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+          if Humanoid then
+              Humanoid.WalkSpeed = Value
+          end
+      end
+   end    
+})
+
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local InfiniteJumpEnabled = false
+
+UserInputService.JumpRequest:Connect(function()
+    if InfiniteJumpEnabled then
+        local Character = LocalPlayer.Character
+        if Character then
+            local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+            if Humanoid then
+                Humanoid:ChangeState("Jumping")
+            end
+        end
+    end
+end)
+
+Tab:AddToggle({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "Infinite Jump",
+    Desc = "Jump infinitely",
+    Default = false,
+    Flag = "ToggleSave",
+    Callback = function(Value)
+        InfiniteJumpEnabled = Value
+    end
+})
+
+local Tab = Window:MakeTab({
+    IsMobile = false,
+    IsPC = false,
+    Name = "Fun",
+    Icon = "rbxassetid://4483345998"
+})
+
+Tab:AddButton({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "Get All Tools",
+    Desc = "Gets All Tools in the Game (Some of them don't work)",
+    Callback = function()
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local Players = game:GetService("Players")
+        local localPlayer = Players.LocalPlayer
+
+        local buildingParts = ReplicatedStorage:WaitForChild("BuildingParts")
+        local backpack = localPlayer:WaitForChild("Backpack")
+
+        local toolNames = {
+            "BindTool",
+            "PaintingTool",
+            "PropertiesTool",
+            "ScalingTool",
+            "TrowelTool"
+        }
+
+        for _, name in ipairs(toolNames) do
+            local tool = buildingParts:FindFirstChild(name)
+            if tool and tool:IsA("Tool") then
+                local clone = tool:Clone()
+                clone.Parent = backpack
+            end
+        end
+    end    
+})
+
+Tab:AddButton({
+    IsMobile = false,
+    IsPC = false,
+    PremiumOnly = false,
+    HidePremium = false,
+    Name = "Delete Water",
+    Desc = "Deletes all the water from the Entire Map",
+    Callback = function()
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj.Name == "Water" or obj.Name == "WaterMask" then
+                obj:Destroy()
+            end
+        end
+    end
+})
